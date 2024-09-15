@@ -12,6 +12,11 @@
 #define MAX_LATENCY 24L * 60 * 60 * 1000000
 uint64_t raw_latency[MAXTHREADS][MAXL];
 
+unsigned int num_writes = 0;
+unsigned int num_reads = 0;
+pthread_mutex_t read_write_mutex;
+unsigned int start_time = 0;
+
 static struct config {
     uint64_t num_urls;
     uint64_t threads;
@@ -106,6 +111,7 @@ int main(int argc, char **argv) {
 
     lua_State **L = zmalloc(cfg.num_urls * sizeof(lua_State *));
     pthread_mutex_init(&statistics.mutex, NULL);
+    pthread_mutex_init(&read_write_mutex, NULL);
     statistics.requests = zmalloc(cfg.num_urls * sizeof(stats *));
 
     /*statitical variables*/
@@ -660,8 +666,14 @@ static uint64_t usec_to_next_send(connection *c) {
         ++c->estimate;
         c->thread_next += gen_next(c);
     }
-    if ((c->thread_next) > now)
+    if ((c->thread_next) > now) {
+        // printf("usec_to_next_send: We are still open loop here\n");
         return c->thread_next - now;
+    }
+    else if (c->thread_next < now) {
+        // printf("usec_to_next_send: We have become closed loop here\n");
+        return 0;
+    }
     else
         return 0;
     
@@ -671,6 +683,7 @@ static uint64_t usec_to_next_send(connection *c) {
 static int delay_request(aeEventLoop *loop, long long id, void *data) {
     connection* c = data;
     uint64_t time_usec_to_wait = usec_to_next_send(c);
+    printf("delay_request: time_usec_to_wait = %ld\n", time_usec_to_wait);
     if (time_usec_to_wait) {
         return round((time_usec_to_wait / 1000.0L) + 0.5); /* don't send, wait */
     }
@@ -768,6 +781,7 @@ static void socket_writeable(aeEventLoop *loop, int fd, void *data, int mask) {
     thread *thread = c->thread;
     if (!c->written) {
         uint64_t time_usec_to_wait = usec_to_next_send(c);
+        printf("delay_request: time_usec_to_wait = %ld\n", time_usec_to_wait);
         if (time_usec_to_wait) {
             int msec_to_wait = round((time_usec_to_wait / 1000.0L) + 0.5);
 
@@ -792,6 +806,14 @@ static void socket_writeable(aeEventLoop *loop, int fd, void *data, int mask) {
         case ERROR: goto error;
         case RETRY: return;
     }
+    pthread_mutex_lock(&read_write_mutex);
+    num_writes++;
+    unsigned int threshold = 0.95*(time_us() - thread->start)/1000000000*cfg.rate;
+    if (num_writes < threshold) {
+        printf("Load generating is open loop with %lu reads and %lu writes. Write does not hit threshold. Expected writes = %lu\n", num_reads, num_writes, threshold);
+    }
+    pthread_mutex_unlock(&read_write_mutex);
+    // if (num_writes < rate*(time_us() - t-> ))
     if (!c->written) {
         c->start = time_us();
         c->actual_latency_start[c->sent & MAXO] = c->start;
@@ -816,13 +838,21 @@ static void socket_writeable(aeEventLoop *loop, int fd, void *data, int mask) {
 static void socket_readable(aeEventLoop *loop, int fd, void *data, int mask) {
     connection *c = data;
     size_t n;
-
     do {
+        time_t ltime; /* calendar time */
+        ltime=time(NULL); /* get current cal time */
+        printf("socket_readable: Parse executable at time %s\n", asctime( localtime(&ltime) ));
         switch (sock.read(c, &n)) {
             case OK:    break;
             case ERROR: goto error;
             case RETRY: return;
         }
+        pthread_mutex_lock(&read_write_mutex);
+        num_reads++;
+        if (num_reads < 0.95*(num_writes - 1)) {
+            printf("Load generating is open loop with %lu reads and %lu writes. Reads < 95 percent of all writes\n", num_reads, num_writes);
+        }
+        pthread_mutex_unlock(&read_write_mutex);
         if (http_parser_execute(&c->parser, &parser_settings, c->buf, n) != n) goto error;
         c->thread->bytes += n;
     } while (n == RECVBUF && sock.readable(c) > 0);

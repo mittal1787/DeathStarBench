@@ -3,6 +3,8 @@
 #include <errno.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <time.h>
+
 
 #include "net.h"
 
@@ -15,6 +17,9 @@ status sock_close(connection *c) {
 }
 
 status sock_read(connection *c, size_t *n) {
+    struct timespec res;
+    clock_gettime(CLOCK_REALTIME,&res);
+    printf("sock_read: read from socket here at time %lu\n", res.tv_sec*1000000000 + res.tv_nsec);
     ssize_t r = read(c->fd, c->buf, sizeof(c->buf));
     *n = (size_t) r;
     return r >= 0 ? OK : ERROR;
