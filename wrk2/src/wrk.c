@@ -213,7 +213,6 @@ int main(int argc, char **argv) {
                 cfg.threads, cfg.connections);
 
         start_urls[id_url] = time_us();
-
     }
     
     struct sigaction sa = {
@@ -224,7 +223,7 @@ int main(int argc, char **argv) {
     sigfillset(&sa.sa_mask);
     sigaction(SIGINT, &sa, NULL);
 
-    uint64_t start  = time_us();
+    start_time  = time_us();
 
     purls = urls;
     for(uint64_t id_url=0; id_url< cfg.num_urls; id_url++ ){        
@@ -251,6 +250,7 @@ int main(int argc, char **argv) {
         purls++;
 
         uint64_t complete = 0;
+        uint64_t sent     = 0;
         uint64_t bytes    = 0;
         errors errors     = { 0 };
         // init 2 histograms with MAX_LATENCY
@@ -262,6 +262,7 @@ int main(int argc, char **argv) {
             uint64_t i = id_url*cfg.threads+id_thread;
             thread *t = &threads[i];
             complete += t->complete;
+            sent     += t->sent;
             bytes    += t->bytes;
 
             errors.connect += t->errors.connect;
@@ -683,7 +684,6 @@ static uint64_t usec_to_next_send(connection *c) {
 static int delay_request(aeEventLoop *loop, long long id, void *data) {
     connection* c = data;
     uint64_t time_usec_to_wait = usec_to_next_send(c);
-    printf("delay_request: time_usec_to_wait = %ld\n", time_usec_to_wait);
     if (time_usec_to_wait) {
         return round((time_usec_to_wait / 1000.0L) + 0.5); /* don't send, wait */
     }
@@ -781,7 +781,6 @@ static void socket_writeable(aeEventLoop *loop, int fd, void *data, int mask) {
     thread *thread = c->thread;
     if (!c->written) {
         uint64_t time_usec_to_wait = usec_to_next_send(c);
-        printf("delay_request: time_usec_to_wait = %ld\n", time_usec_to_wait);
         if (time_usec_to_wait) {
             int msec_to_wait = round((time_usec_to_wait / 1000.0L) + 0.5);
 
@@ -806,13 +805,17 @@ static void socket_writeable(aeEventLoop *loop, int fd, void *data, int mask) {
         case ERROR: goto error;
         case RETRY: return;
     }
-    pthread_mutex_lock(&read_write_mutex);
-    num_writes++;
-    unsigned int threshold = 0.95*(time_us() - thread->start)/1000000000*cfg.rate;
-    if (num_writes < threshold) {
-        printf("Load generating is open loop with %lu reads and %lu writes. Write does not hit threshold. Expected writes = %lu\n", num_reads, num_writes, threshold);
+    if (cfg.num_urls == 1) {
+        pthread_mutex_lock(&read_write_mutex);
+        num_writes++;
+        // If threshold is smaller than 95% of what should be expected based on the rate
+        double time_elasped = (time_us() - thread->start)/1000000.0;
+        unsigned int threshold = 0.95*time_elasped*cfg.rate;
+        if (num_writes < threshold) {
+            printf("[%lu] Load generating is open loop with %lu reads and %lu writes. Write does not hit threshold. Time elasped = %f, Expected writes = %lu\n", time_us(), num_reads, num_writes, time_elasped, threshold);
+        }
+        pthread_mutex_unlock(&read_write_mutex);
     }
-    pthread_mutex_unlock(&read_write_mutex);
     // if (num_writes < rate*(time_us() - t-> ))
     if (!c->written) {
         c->start = time_us();
@@ -827,6 +830,7 @@ static void socket_writeable(aeEventLoop *loop, int fd, void *data, int mask) {
         aeDeleteFileEvent(loop, fd, AE_WRITABLE);
         aeCreateFileEvent(thread->loop, c->fd, AE_WRITABLE, socket_writeable, c);
     }
+
     return;
 
   error:
@@ -839,9 +843,6 @@ static void socket_readable(aeEventLoop *loop, int fd, void *data, int mask) {
     connection *c = data;
     size_t n;
     do {
-        time_t ltime; /* calendar time */
-        ltime=time(NULL); /* get current cal time */
-        printf("socket_readable: Parse executable at time %s\n", asctime( localtime(&ltime) ));
         switch (sock.read(c, &n)) {
             case OK:    break;
             case ERROR: goto error;

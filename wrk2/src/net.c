@@ -21,6 +21,7 @@ status sock_read(connection *c, size_t *n) {
 }
 
 status sock_write(connection *c, char *buf, size_t len, size_t *n) {
+
     ssize_t r;
     if ((r = write(c->fd, buf, len)) == -1) {
         switch (errno) {
