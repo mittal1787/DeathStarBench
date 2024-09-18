@@ -851,7 +851,7 @@ static void socket_readable(aeEventLoop *loop, int fd, void *data, int mask) {
         pthread_mutex_lock(&read_write_mutex);
         num_reads++;
         if (num_reads < 0.95*(num_writes - 1)) {
-            printf("Load generating is open loop with %lu reads and %lu writes. Reads < 95 percent of all writes\n", num_reads, num_writes);
+            printf("[%lu] Load generating is open loop with %lu reads and %lu writes. Reads < 95 percent of all writes\n", time_us(), num_reads, num_writes);
         }
         pthread_mutex_unlock(&read_write_mutex);
         if (http_parser_execute(&c->parser, &parser_settings, c->buf, n) != n) goto error;
