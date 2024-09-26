@@ -1,4 +1,5 @@
 CFLAGS  := -std=c99 -Wall -O2 -D_REENTRANT
+# CFLAGS := -std=c++11 -Wall -O2 -D_REENTRANT
 LIBS    := -lpthread -lm -lcrypto -lssl
 
 TARGET  := $(shell uname -s | tr '[A-Z]' '[a-z]' 2>/dev/null || echo unknown)
@@ -19,6 +20,8 @@ endif
 
 SRC  := wrk.c net.c ssl.c aprintf.c stats.c script.c units.c \
 		ae.c zmalloc.c http_parser.c tinymt64.c hdr_histogram.c
+# SRC  := wrk.cc net.c ssl.c aprintf.c stats.c script.c units.c \
+# 		ae.c zmalloc.c http_parser.c tinymt64.c hdr_histogram.c
 BIN  := wrk
 
 ODIR := obj
@@ -61,7 +64,9 @@ $(LDIR)/libluajit.a:
 .SUFFIXES: .c .o .lua
 
 vpath %.c   src
+vpath %.cc  src
 vpath %.h   src
+vpath %.hpp src
 vpath %.lua scripts
 
 install:

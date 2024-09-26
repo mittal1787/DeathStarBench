@@ -1,6 +1,6 @@
 // Copyright (C) 2012 - Will Glozer.  All rights reserved.
 
-#include "wrk.h"
+#include "wrk.hpp"
 #include "unistd.h"
 #include "script.h"
 #include "main.h"
@@ -808,19 +808,15 @@ static void socket_writeable(aeEventLoop *loop, int fd, void *data, int mask) {
     if (cfg.num_urls == 1) {
         pthread_mutex_lock(&read_write_mutex);
         num_writes++;
-        // If threshold is smaller than 95% of what should be expected based on the rate (after the first second)
+        // If threshold is smaller than 95% of what should be expected based on the rate
         double time_elasped = (time_us() - thread->start)/1000000.0;
-        unsigned int threshold = 0.90*time_elasped*cfg.rate;
-        if (time_elasped > 1 && num_writes < threshold) {
-            printf("[%lu] Load generating is closed loop with %lu reads and %lu writes. Write does not hit threshold. Time elasped = %f, Expected writes = %lu\n", time_us(), num_reads, num_writes, time_elasped, threshold);
+        unsigned int threshold = 0.95*time_elasped*cfg.rate;
+        if (num_writes < threshold) {
+            printf("[%lu] Load generating is open loop with %lu reads and %lu writes. Write does not hit threshold. Time elasped = %f, Expected writes = %lu\n", time_us(), num_reads, num_writes, time_elasped, threshold);
         }
         pthread_mutex_unlock(&read_write_mutex);
     }
-    if (c->complete < c->sent) {
-        // If the requests complete by connection is less than the ones actually sent, 
-        // fire in a different connection rather than this one
-        printf("[%lu] Load generating is closed loop with %lu requests complete and %lu requests sent. Create a new connection here\n", time_us(), c->complete, c->sent);
-    }
+    // if (num_writes < rate*(time_us() - t-> ))
     if (!c->written) {
         c->start = time_us();
         c->actual_latency_start[c->sent & MAXO] = c->start;
@@ -854,8 +850,8 @@ static void socket_readable(aeEventLoop *loop, int fd, void *data, int mask) {
         }
         pthread_mutex_lock(&read_write_mutex);
         num_reads++;
-        if (num_writes > cfg.rate && num_reads < 0.95*(num_writes - cfg.rate)) {
-            printf("[%lu] Load generating is closed loop with %lu reads and %lu writes. Reads < 95 percent of all writes\n", time_us(), num_reads, num_writes);
+        if (num_reads < 0.95*(num_writes - 1)) {
+            printf("[%lu] Load generating is open loop with %lu reads and %lu writes. Reads < 95 percent of all writes\n", time_us(), num_reads, num_writes);
         }
         pthread_mutex_unlock(&read_write_mutex);
         if (http_parser_execute(&c->parser, &parser_settings, c->buf, n) != n) goto error;
