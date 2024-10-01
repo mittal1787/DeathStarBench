@@ -812,7 +812,7 @@ static void socket_writeable(aeEventLoop *loop, int fd, void *data, int mask) {
         double time_elasped = (time_us() - thread->start)/1000000.0;
         unsigned int threshold = 0.90*time_elasped*cfg.rate;
         if (time_elasped > 1 && num_writes < threshold) {
-            printf("[%lu] Load generating is closed loop with %lu reads and %lu writes. Write does not hit threshold. Time elasped = %f, Expected writes = %lu\n", time_us(), num_reads, num_writes, time_elasped, threshold);
+            printf("[%lu] Load generating currently with %lu reads and %lu writes. Write does not hit threshold. Time elasped = %f, Expected writes = %lu\n", time_us(), num_reads, num_writes, time_elasped, threshold);
         }
         pthread_mutex_unlock(&read_write_mutex);
     }
