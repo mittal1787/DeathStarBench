@@ -48,3 +48,7 @@ docker-compose up -d
 cd helm-chart
 helm uninstall social # Checks for if deployed. 
 helm install social ./socialnetwork
+
+sudo apt-get install python3-pip
+pip3 install aiohttp
+python3 socialNetwork/scripts/init_social_graph.py
