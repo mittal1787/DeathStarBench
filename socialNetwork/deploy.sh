@@ -51,4 +51,4 @@ helm install social ./socialnetwork
 
 sudo apt-get install python3-pip
 pip3 install aiohttp
-python3 socialNetwork/scripts/init_social_graph.py
+python3 scripts/init_social_graph.py
